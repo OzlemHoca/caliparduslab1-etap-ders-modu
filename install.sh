@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -u
+set -Eeuo pipefail
 
 # ---------------------------------------------------------
 # UYGULAMA BİLGİLERİ
@@ -9,34 +9,45 @@ set -u
 UYGULAMA_ADI="ETAP Ders Modu"
 UYGULAMA_KIMLIGI="caliparduslab2-etap-ders-modu"
 
-KAYNAK_DIZINI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HEDEF_DIZIN="/opt/etap-ders-modu"
+KAYNAK_DIZINI="$(
+    cd "$(dirname "${BASH_SOURCE[0]}")" &&
+    pwd
+)"
 
-MASAUSTU_DOSYASI="${UYGULAMA_KIMLIGI}.desktop"
+HEDEF_DIZIN="/opt/etap-ders-modu"
 UYGULAMALAR_DIZINI="/usr/share/applications"
 
-BASLATMA_DOSYASI="baslat.sh"
-GUI_DOSYASI="src/etap_ders_modu_gui.py"
-TERMINAL_DOSYASI="src/project.py"
-
+MASAUSTU_DOSYASI="${UYGULAMA_KIMLIGI}.desktop"
 SIMGE_DOSYASI="assets/etap-ders-modu.png"
+
+MOTOR_DOSYASI="src/etap_ders_modu.py"
+GUI_DOSYASI="src/etap_ders_modu_gui.py"
+
+BASLATMA_DOSYASI="baslat.sh"
 
 
 # ---------------------------------------------------------
 # YARDIMCI FONKSİYONLAR
 # ---------------------------------------------------------
 
-hata_mesaji() {
-    echo
-    echo "HATA: $1"
-    echo
-}
-
-bilgi_mesaji() {
+bilgi() {
     echo ">> $1"
 }
 
-basari_mesaji() {
+uyari() {
+    echo
+    echo "UYARI: $1"
+    echo
+}
+
+hata() {
+    echo
+    echo "HATA: $1"
+    echo
+    exit 1
+}
+
+basarili() {
     echo
     echo "=============================================="
     echo "$1"
@@ -48,13 +59,20 @@ komut_var_mi() {
     command -v "$1" >/dev/null 2>&1
 }
 
-dosya_var_mi() {
-    [ -f "$1" ]
+hata_yakala() {
+    local cikis_kodu=$?
+    local satir_no=$1
+
+    echo
+    echo "Kurulum sırasında beklenmeyen bir hata oluştu."
+    echo "Satır: ${satir_no}"
+    echo "Çıkış kodu: ${cikis_kodu}"
+    echo
+
+    exit "${cikis_kodu}"
 }
 
-dizin_var_mi() {
-    [ -d "$1" ]
-}
+trap 'hata_yakala ${LINENO}' ERR
 
 
 # ---------------------------------------------------------
@@ -69,46 +87,49 @@ echo
 
 
 # ---------------------------------------------------------
-# YÖNETİCİ YETKİSİ KONTROLÜ
+# ROOT KONTROLÜ
 # ---------------------------------------------------------
 
 if [ "${EUID}" -ne 0 ]; then
-    hata_mesaji "Bu kurulum yönetici yetkisi gerektirir."
+    hata \
+        "Bu kurulum yönetici yetkisi gerektirir.
 
-    echo "Kurulumu şu komutla tekrar çalıştırın:"
-    echo
-    echo "sudo bash install.sh"
-    echo
+Şu komutla tekrar çalıştırın:
 
-    exit 1
+sudo bash install.sh"
 fi
 
 
 # ---------------------------------------------------------
-# GERÇEK KULLANICIYI BELİRLEME
+# GERÇEK KULLANICIYI BULMA
 # ---------------------------------------------------------
 
 GERCEK_KULLANICI="${SUDO_USER:-}"
 
 if [ -z "${GERCEK_KULLANICI}" ]; then
-    GERCEK_KULLANICI="$(logname 2>/dev/null || true)"
+    GERCEK_KULLANICI="$(
+        logname 2>/dev/null || true
+    )"
 fi
 
 if [ -z "${GERCEK_KULLANICI}" ] || \
    [ "${GERCEK_KULLANICI}" = "root" ]; then
 
-    hata_mesaji "Kurulumu başlatan normal kullanıcı belirlenemedi."
+    hata \
+        "Kurulumu başlatan normal kullanıcı belirlenemedi.
 
-    echo "Kurulumu masaüstü oturumundaki kullanıcıyla şu şekilde başlatın:"
-    echo
-    echo "sudo bash install.sh"
-    echo
+Kurulumu masaüstü oturumundaki kullanıcı ile çalıştırın:
 
-    exit 1
+sudo bash install.sh"
 fi
 
-KULLANICI_KIMLIGI="$(id -u "${GERCEK_KULLANICI}")"
-KULLANICI_GRUBU="$(id -gn "${GERCEK_KULLANICI}")"
+if ! id "${GERCEK_KULLANICI}" >/dev/null 2>&1; then
+    hata "Kullanıcı bulunamadı: ${GERCEK_KULLANICI}"
+fi
+
+KULLANICI_GRUBU="$(
+    id -gn "${GERCEK_KULLANICI}"
+)"
 
 KULLANICI_EVI="$(
     getent passwd "${GERCEK_KULLANICI}" |
@@ -118,13 +139,12 @@ KULLANICI_EVI="$(
 if [ -z "${KULLANICI_EVI}" ] || \
    [ ! -d "${KULLANICI_EVI}" ]; then
 
-    hata_mesaji "Kullanıcı ev dizini belirlenemedi."
-    exit 1
+    hata "Kullanıcının ev dizini belirlenemedi."
 fi
 
 
 # ---------------------------------------------------------
-# MASAÜSTÜ KLASÖRÜNÜ BELİRLEME
+# MASAÜSTÜ KLASÖRÜ
 # ---------------------------------------------------------
 
 KULLANICI_MASAUSTU=""
@@ -143,60 +163,55 @@ if [ -z "${KULLANICI_MASAUSTU}" ]; then
 
     elif [ -d "${KULLANICI_EVI}/Desktop" ]; then
         KULLANICI_MASAUSTU="${KULLANICI_EVI}/Desktop"
+
+    else
+        KULLANICI_MASAUSTU="${KULLANICI_EVI}/Masaüstü"
     fi
 fi
 
 
 # ---------------------------------------------------------
-# KAYNAK DOSYA KONTROLLERİ
+# KAYNAK DOSYALAR
 # ---------------------------------------------------------
 
-bilgi_mesaji "Kurulum dosyaları kontrol ediliyor..."
+bilgi "Kurulum dosyaları kontrol ediliyor..."
 
 GEREKLI_DOSYALAR=(
-    "${KAYNAK_DIZINI}/${BASLATMA_DOSYASI}"
-    "${KAYNAK_DIZINI}/${MASAUSTU_DOSYASI}"
+    "${KAYNAK_DIZINI}/${MOTOR_DOSYASI}"
     "${KAYNAK_DIZINI}/${GUI_DOSYASI}"
-    "${KAYNAK_DIZINI}/${TERMINAL_DOSYASI}"
     "${KAYNAK_DIZINI}/${SIMGE_DOSYASI}"
 )
 
 for DOSYA in "${GEREKLI_DOSYALAR[@]}"; do
-    if ! dosya_var_mi "${DOSYA}"; then
-        hata_mesaji "Gerekli dosya bulunamadı: ${DOSYA}"
-        exit 1
+    if [ ! -f "${DOSYA}" ]; then
+        hata "Gerekli dosya bulunamadı: ${DOSYA}"
     fi
 done
 
 
 # ---------------------------------------------------------
-# PAKET YÖNETİCİSİ KONTROLÜ
+# PAKET YÖNETİCİSİ
 # ---------------------------------------------------------
 
 if ! komut_var_mi apt-get; then
-    hata_mesaji "apt-get paket yöneticisi bulunamadı."
-    echo "Bu kurulum Pardus ve Debian tabanlı sistemler için hazırlanmıştır."
-    exit 1
+    hata \
+        "apt-get paket yöneticisi bulunamadı.
+
+Bu kurulum Pardus ve Debian tabanlı sistemler için hazırlanmıştır."
 fi
 
 
 # ---------------------------------------------------------
-# BAĞIMLILIK KONTROLLERİ
+# BAĞIMLILIKLAR
 # ---------------------------------------------------------
 
-bilgi_mesaji "Sistem bağımlılıkları kontrol ediliyor..."
+bilgi "Sistem bağımlılıkları kontrol ediliyor..."
 
 EKSIK_PAKETLER=()
-
-
-# Python 3
 
 if ! komut_var_mi python3; then
     EKSIK_PAKETLER+=("python3")
 fi
-
-
-# Tkinter
 
 if komut_var_mi python3; then
     if ! python3 -c "import tkinter" >/dev/null 2>&1; then
@@ -206,58 +221,53 @@ else
     EKSIK_PAKETLER+=("python3-tk")
 fi
 
-
-# xset
-
 if ! komut_var_mi xset; then
     EKSIK_PAKETLER+=("x11-xserver-utils")
 fi
 
-
-# Masaüstü veritabanı güncellemesi
+if ! komut_var_mi xfconf-query; then
+    EKSIK_PAKETLER+=("xfconf")
+fi
 
 if ! komut_var_mi update-desktop-database; then
     EKSIK_PAKETLER+=("desktop-file-utils")
 fi
 
-
-# xdg-user-dir desteği
-
 if ! komut_var_mi xdg-user-dir; then
     EKSIK_PAKETLER+=("xdg-user-dirs")
 fi
-
-
-# gio çoğunlukla GLib ile gelir
 
 if ! komut_var_mi gio; then
     EKSIK_PAKETLER+=("libglib2.0-bin")
 fi
 
-
-# Zenity hata pencereleri için önerilir
-
 if ! komut_var_mi zenity; then
     EKSIK_PAKETLER+=("zenity")
 fi
 
+if ! komut_var_mi notify-send; then
+    EKSIK_PAKETLER+=("libnotify-bin")
+fi
 
-# Aynı paketin iki kez eklenmesini engelle
+
+# ---------------------------------------------------------
+# TEKRAR EDEN PAKETLERİ TEMİZLE
+# ---------------------------------------------------------
 
 if [ "${#EKSIK_PAKETLER[@]}" -gt 0 ]; then
     TEKIL_PAKETLER=()
 
     for PAKET in "${EKSIK_PAKETLER[@]}"; do
-        PAKET_VAR=false
+        PAKET_EKLENDI=false
 
-        for EKLENMIS_PAKET in "${TEKIL_PAKETLER[@]}"; do
-            if [ "${PAKET}" = "${EKLENMIS_PAKET}" ]; then
-                PAKET_VAR=true
+        for MEVCUT_PAKET in "${TEKIL_PAKETLER[@]}"; do
+            if [ "${PAKET}" = "${MEVCUT_PAKET}" ]; then
+                PAKET_EKLENDI=true
                 break
             fi
         done
 
-        if [ "${PAKET_VAR}" = false ]; then
+        if [ "${PAKET_EKLENDI}" = false ]; then
             TEKIL_PAKETLER+=("${PAKET}")
         fi
     done
@@ -267,145 +277,224 @@ if [ "${#EKSIK_PAKETLER[@]}" -gt 0 ]; then
     printf ' - %s\n' "${TEKIL_PAKETLER[@]}"
     echo
 
-    bilgi_mesaji "Paket listesi güncelleniyor..."
+    bilgi "Paket listesi güncelleniyor..."
+    apt-get update
 
-    if ! apt-get update; then
-        hata_mesaji "Paket listesi güncellenemedi."
-        exit 1
-    fi
+    bilgi "Eksik paketler kuruluyor..."
+    apt-get install -y "${TEKIL_PAKETLER[@]}"
 
-    bilgi_mesaji "Eksik paketler kuruluyor..."
-
-    if ! apt-get install -y "${TEKIL_PAKETLER[@]}"; then
-        hata_mesaji "Gerekli paketlerden biri veya birkaçı kurulamadı."
-        exit 1
-    fi
 else
-    bilgi_mesaji "Gerekli tüm paketler sistemde mevcut."
+    bilgi "Gerekli tüm paketler sistemde mevcut."
 fi
 
 
 # ---------------------------------------------------------
-# BAĞIMLILIK SON KONTROLÜ
+# BAĞIMLILIK DOĞRULAMASI
 # ---------------------------------------------------------
 
-bilgi_mesaji "Bağımlılıklar doğrulanıyor..."
+bilgi "Bağımlılıklar doğrulanıyor..."
 
-if ! komut_var_mi python3; then
-    hata_mesaji "Python 3 kurulumu doğrulanamadı."
-    exit 1
-fi
+komut_var_mi python3 || \
+    hata "Python 3 kurulumu doğrulanamadı."
 
-if ! python3 -c "import tkinter" >/dev/null 2>&1; then
-    hata_mesaji "Tkinter kurulumu doğrulanamadı."
-    exit 1
-fi
+python3 -c "import tkinter" >/dev/null 2>&1 || \
+    hata "Tkinter kurulumu doğrulanamadı."
 
-if ! komut_var_mi xset; then
-    hata_mesaji "xset kurulumu doğrulanamadı."
-    exit 1
-fi
+komut_var_mi xset || \
+    hata "xset kurulumu doğrulanamadı."
+
+komut_var_mi xfconf-query || \
+    hata "xfconf-query kurulumu doğrulanamadı."
 
 
 # ---------------------------------------------------------
-# ESKİ KURULUMU TEMİZLEME
+# PYTHON SÖZDİZİMİ KONTROLÜ
 # ---------------------------------------------------------
 
-bilgi_mesaji "Eski kurulum kontrol ediliyor..."
+bilgi "Python kaynak kodları kontrol ediliyor..."
 
-if dizin_var_mi "${HEDEF_DIZIN}"; then
-    bilgi_mesaji "Mevcut kurulum kaldırılıyor..."
+python3 -m py_compile \
+    "${KAYNAK_DIZINI}/${MOTOR_DOSYASI}" \
+    "${KAYNAK_DIZINI}/${GUI_DOSYASI}"
+
+
+# ---------------------------------------------------------
+# ESKİ KURULUM
+# ---------------------------------------------------------
+
+if [ -d "${HEDEF_DIZIN}" ]; then
+    bilgi "Eski kurulum kaldırılıyor..."
     rm -rf "${HEDEF_DIZIN}"
 fi
 
 
 # ---------------------------------------------------------
-# UYGULAMA DİZİNİNİ OLUŞTURMA
+# UYGULAMA DOSYALARINI KOPYALA
 # ---------------------------------------------------------
 
-bilgi_mesaji "Uygulama dizini oluşturuluyor..."
+bilgi "Uygulama dizini oluşturuluyor..."
 
-mkdir -p "${HEDEF_DIZIN}"
+mkdir -p \
+    "${HEDEF_DIZIN}/src" \
+    "${HEDEF_DIZIN}/assets"
 
-if [ ! -d "${HEDEF_DIZIN}" ]; then
-    hata_mesaji "Uygulama dizini oluşturulamadı."
-    exit 1
-fi
+bilgi "Uygulama kaynak kodları kopyalanıyor..."
 
+install \
+    -m 755 \
+    "${KAYNAK_DIZINI}/${MOTOR_DOSYASI}" \
+    "${HEDEF_DIZIN}/${MOTOR_DOSYASI}"
 
-# ---------------------------------------------------------
-# UYGULAMA DOSYALARINI KOPYALAMA
-# ---------------------------------------------------------
+install \
+    -m 755 \
+    "${KAYNAK_DIZINI}/${GUI_DOSYASI}" \
+    "${HEDEF_DIZIN}/${GUI_DOSYASI}"
 
-bilgi_mesaji "Uygulama dosyaları kopyalanıyor..."
-
-cp -R "${KAYNAK_DIZINI}/src" "${HEDEF_DIZIN}/"
-cp -R "${KAYNAK_DIZINI}/assets" "${HEDEF_DIZIN}/"
-cp "${KAYNAK_DIZINI}/${BASLATMA_DOSYASI}" "${HEDEF_DIZIN}/"
-
-if [ -d "${KAYNAK_DIZINI}/docs" ]; then
-    cp -R "${KAYNAK_DIZINI}/docs" "${HEDEF_DIZIN}/"
-fi
+install \
+    -m 644 \
+    "${KAYNAK_DIZINI}/${SIMGE_DOSYASI}" \
+    "${HEDEF_DIZIN}/${SIMGE_DOSYASI}"
 
 if [ -f "${KAYNAK_DIZINI}/README.md" ]; then
-    cp "${KAYNAK_DIZINI}/README.md" "${HEDEF_DIZIN}/"
+    install \
+        -m 644 \
+        "${KAYNAK_DIZINI}/README.md" \
+        "${HEDEF_DIZIN}/README.md"
 fi
 
 if [ -f "${KAYNAK_DIZINI}/LICENSE" ]; then
-    cp "${KAYNAK_DIZINI}/LICENSE" "${HEDEF_DIZIN}/"
+    install \
+        -m 644 \
+        "${KAYNAK_DIZINI}/LICENSE" \
+        "${HEDEF_DIZIN}/LICENSE"
 fi
 
-
-# ---------------------------------------------------------
-# DOSYA İZİNLERİ
-# ---------------------------------------------------------
-
-bilgi_mesaji "Dosya izinleri düzenleniyor..."
-
-chmod 755 "${HEDEF_DIZIN}/${BASLATMA_DOSYASI}"
-chmod 755 "${HEDEF_DIZIN}/${GUI_DOSYASI}"
-chmod 755 "${HEDEF_DIZIN}/${TERMINAL_DOSYASI}"
-
-find "${HEDEF_DIZIN}" -type d -exec chmod 755 {} \;
-find "${HEDEF_DIZIN}" -type f -exec chmod 644 {} \;
-
-chmod 755 "${HEDEF_DIZIN}/${BASLATMA_DOSYASI}"
-chmod 755 "${HEDEF_DIZIN}/${GUI_DOSYASI}"
-chmod 755 "${HEDEF_DIZIN}/${TERMINAL_DOSYASI}"
+if [ -f "${KAYNAK_DIZINI}/durum.json" ]; then
+    install \
+        -m 644 \
+        "${KAYNAK_DIZINI}/durum.json" \
+        "${HEDEF_DIZIN}/durum-ornek.json"
+fi
 
 chown -R root:root "${HEDEF_DIZIN}"
 
 
 # ---------------------------------------------------------
-# UYGULAMA MENÜSÜ KISAYOLU
+# BAŞLATMA BETİĞİNİ OLUŞTUR
 # ---------------------------------------------------------
 
-bilgi_mesaji "Uygulama menüsü kısayolu oluşturuluyor..."
+bilgi "Başlatma betiği oluşturuluyor..."
 
-install \
-    -m 644 \
-    "${KAYNAK_DIZINI}/${MASAUSTU_DOSYASI}" \
-    "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}"
+cat > "${HEDEF_DIZIN}/${BASLATMA_DOSYASI}" <<'BASLAT_EOF'
+#!/usr/bin/env bash
 
-if [ ! -f "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}" ]; then
-    hata_mesaji "Uygulama menüsü kısayolu oluşturulamadı."
+set -u
+
+UYGULAMA_DIZINI="/opt/etap-ders-modu"
+GUI_DOSYASI="${UYGULAMA_DIZINI}/src/etap_ders_modu_gui.py"
+
+LOG_DIZINI="${HOME}/.config/caliparduslab2-etap-ders-modu"
+LOG_DOSYASI="${LOG_DIZINI}/baslatma.log"
+
+mkdir -p "${LOG_DIZINI}"
+
+tarih_yaz() {
+    date '+%Y-%m-%d %H:%M:%S'
+}
+
+hata_penceresi() {
+    local mesaj="$1"
+
+    echo "$(tarih_yaz) - HATA: ${mesaj}" \
+        >> "${LOG_DOSYASI}"
+
+    if command -v zenity >/dev/null 2>&1; then
+        zenity \
+            --error \
+            --title="ETAP Ders Modu" \
+            --width=450 \
+            --text="${mesaj}"
+    fi
+}
+
+if ! command -v python3 >/dev/null 2>&1; then
+    hata_penceresi "Python 3 sistemde bulunamadı."
     exit 1
 fi
 
+if ! python3 -c "import tkinter" >/dev/null 2>&1; then
+    hata_penceresi "Tkinter bileşeni sistemde bulunamadı."
+    exit 1
+fi
+
+if [ ! -f "${GUI_DOSYASI}" ]; then
+    hata_penceresi \
+        "ETAP Ders Modu grafik arayüz dosyası bulunamadı:
+
+${GUI_DOSYASI}"
+
+    exit 1
+fi
+
+if [ -z "${DISPLAY:-}" ]; then
+    hata_penceresi \
+        "Grafik masaüstü oturumuna erişilemiyor.
+
+ETAP Ders Modu masaüstü simgesinden çalıştırılmalıdır."
+
+    exit 1
+fi
+
+cd "${UYGULAMA_DIZINI}/src" || {
+    hata_penceresi "Uygulama klasörüne erişilemedi."
+    exit 1
+}
+
+echo "$(tarih_yaz) - Uygulama başlatıldı." \
+    >> "${LOG_DOSYASI}"
+
+exec python3 "${GUI_DOSYASI}" \
+    >> "${LOG_DOSYASI}" 2>&1
+BASLAT_EOF
+
+chmod 755 "${HEDEF_DIZIN}/${BASLATMA_DOSYASI}"
+
 
 # ---------------------------------------------------------
-# DESKTOP DOSYASINI DOĞRULAMA
+# DESKTOP DOSYASINI OLUŞTUR
+# ---------------------------------------------------------
+
+bilgi "Uygulama menüsü kısayolu oluşturuluyor..."
+
+cat > "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}" <<DESKTOP_EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ETAP Ders Modu
+GenericName=Ders Modu Yöneticisi
+Comment=Ekranı açık tutun ve ders sırasında bildirimleri susturun
+Exec=${HEDEF_DIZIN}/${BASLATMA_DOSYASI}
+Icon=${HEDEF_DIZIN}/${SIMGE_DOSYASI}
+Terminal=false
+Categories=Education;Utility;
+Keywords=ETAP;Pardus;Ders;Öğretmen;Ekran;Bildirim;
+StartupNotify=true
+StartupWMClass=ETAP Ders Modu
+DESKTOP_EOF
+
+chmod 644 \
+    "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}"
+
+
+# ---------------------------------------------------------
+# DESKTOP DOSYASINI DOĞRULA
 # ---------------------------------------------------------
 
 if komut_var_mi desktop-file-validate; then
-    bilgi_mesaji "Masaüstü kısayolu doğrulanıyor..."
+    bilgi "Masaüstü kısayolu doğrulanıyor..."
 
-    if ! desktop-file-validate \
-        "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}"; then
-
-        hata_mesaji "Masaüstü kısayol dosyası geçerli değil."
-        exit 1
-    fi
+    desktop-file-validate \
+        "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}"
 fi
 
 
@@ -413,67 +502,63 @@ fi
 # MASAÜSTÜ KISAYOLU
 # ---------------------------------------------------------
 
-if [ -n "${KULLANICI_MASAUSTU}" ]; then
-    bilgi_mesaji "Masaüstü kısayolu oluşturuluyor..."
+bilgi "Masaüstü kısayolu hazırlanıyor..."
 
-    mkdir -p "${KULLANICI_MASAUSTU}"
+mkdir -p "${KULLANICI_MASAUSTU}"
 
-    MASAUSTU_HEDEF_DOSYASI="${
-        KULLANICI_MASAUSTU
-    }/ETAP Ders Modu.desktop"
+MASAUSTU_HEDEF_DOSYASI="${
+    KULLANICI_MASAUSTU
+}/ETAP Ders Modu.desktop"
 
-    install \
-        -o "${GERCEK_KULLANICI}" \
-        -g "${KULLANICI_GRUBU}" \
-        -m 755 \
-        "${KAYNAK_DIZINI}/${MASAUSTU_DOSYASI}" \
-        "${MASAUSTU_HEDEF_DOSYASI}"
+install \
+    -o "${GERCEK_KULLANICI}" \
+    -g "${KULLANICI_GRUBU}" \
+    -m 755 \
+    "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}" \
+    "${MASAUSTU_HEDEF_DOSYASI}"
 
-    if komut_var_mi gio; then
-        sudo -u "${GERCEK_KULLANICI}" \
-            HOME="${KULLANICI_EVI}" \
-            gio set \
-            "${MASAUSTU_HEDEF_DOSYASI}" \
-            metadata::trusted true \
-            >/dev/null 2>&1 || true
-    fi
-
-    chown \
-        "${GERCEK_KULLANICI}:${KULLANICI_GRUBU}" \
-        "${MASAUSTU_HEDEF_DOSYASI}"
-else
-    echo
-    echo "Bilgi: Kullanıcının masaüstü klasörü bulunamadı."
-    echo "Uygulama yalnızca uygulama menüsüne eklendi."
-    echo
+if komut_var_mi gio; then
+    sudo -u "${GERCEK_KULLANICI}" \
+        HOME="${KULLANICI_EVI}" \
+        gio set \
+        "${MASAUSTU_HEDEF_DOSYASI}" \
+        metadata::trusted true \
+        >/dev/null 2>&1 || true
 fi
+
+chown \
+    "${GERCEK_KULLANICI}:${KULLANICI_GRUBU}" \
+    "${MASAUSTU_HEDEF_DOSYASI}"
 
 
 # ---------------------------------------------------------
-# UYGULAMA VERİ KLASÖRÜ
+# KULLANICI AYAR DİZİNİ
 # ---------------------------------------------------------
 
 KULLANICI_AYAR_DIZINI="${
     KULLANICI_EVI
 }/.config/${UYGULAMA_KIMLIGI}"
 
-bilgi_mesaji "Kullanıcı ayar dizini hazırlanıyor..."
+bilgi "Kullanıcı ayar dizini hazırlanıyor..."
 
 mkdir -p "${KULLANICI_AYAR_DIZINI}"
+
+touch "${KULLANICI_AYAR_DIZINI}/baslatma.log"
 
 chown -R \
     "${GERCEK_KULLANICI}:${KULLANICI_GRUBU}" \
     "${KULLANICI_AYAR_DIZINI}"
 
 chmod 700 "${KULLANICI_AYAR_DIZINI}"
+chmod 600 "${KULLANICI_AYAR_DIZINI}/baslatma.log"
 
 
 # ---------------------------------------------------------
-# MASAÜSTÜ VERİTABANINI GÜNCELLEME
+# UYGULAMA MENÜSÜ VERİTABANI
 # ---------------------------------------------------------
 
 if komut_var_mi update-desktop-database; then
-    bilgi_mesaji "Uygulama menüsü veritabanı güncelleniyor..."
+    bilgi "Uygulama menüsü veritabanı güncelleniyor..."
 
     update-desktop-database \
         "${UYGULAMALAR_DIZINI}" \
@@ -482,82 +567,55 @@ fi
 
 
 # ---------------------------------------------------------
-# SİMGE ÖNBELLEĞİNİ GÜNCELLEME
+# KURULUM DOĞRULAMASI
 # ---------------------------------------------------------
 
-if komut_var_mi gtk-update-icon-cache; then
-    gtk-update-icon-cache \
-        -f \
-        -t \
-        /usr/share/icons/hicolor \
-        >/dev/null 2>&1 || true
-fi
-
-
-# ---------------------------------------------------------
-# KURULUM SONRASI DOSYA KONTROLLERİ
-# ---------------------------------------------------------
-
-bilgi_mesaji "Kurulum doğrulanıyor..."
+bilgi "Kurulum doğrulanıyor..."
 
 KURULAN_DOSYALAR=(
-    "${HEDEF_DIZIN}/${BASLATMA_DOSYASI}"
+    "${HEDEF_DIZIN}/${MOTOR_DOSYASI}"
     "${HEDEF_DIZIN}/${GUI_DOSYASI}"
-    "${HEDEF_DIZIN}/${TERMINAL_DOSYASI}"
     "${HEDEF_DIZIN}/${SIMGE_DOSYASI}"
+    "${HEDEF_DIZIN}/${BASLATMA_DOSYASI}"
     "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}"
+    "${MASAUSTU_HEDEF_DOSYASI}"
 )
 
 for DOSYA in "${KURULAN_DOSYALAR[@]}"; do
-    if ! dosya_var_mi "${DOSYA}"; then
-        hata_mesaji "Kurulum doğrulaması başarısız: ${DOSYA}"
-        exit 1
+    if [ ! -f "${DOSYA}" ]; then
+        hata "Kurulum doğrulaması başarısız: ${DOSYA}"
     fi
 done
 
-
-# ---------------------------------------------------------
-# PYTHON DOSYALARINI SÖZDİZİMİ KONTROLÜ
-# ---------------------------------------------------------
-
-bilgi_mesaji "Python dosyaları kontrol ediliyor..."
-
-if ! python3 -m py_compile \
-    "${HEDEF_DIZIN}/${TERMINAL_DOSYASI}" \
-    "${HEDEF_DIZIN}/${GUI_DOSYASI}"; then
-
-    hata_mesaji "Python dosyalarında sözdizimi hatası bulundu."
-    exit 1
-fi
+python3 -m py_compile \
+    "${HEDEF_DIZIN}/${MOTOR_DOSYASI}" \
+    "${HEDEF_DIZIN}/${GUI_DOSYASI}"
 
 
 # ---------------------------------------------------------
 # TAMAMLAMA
 # ---------------------------------------------------------
 
-basari_mesaji "${UYGULAMA_ADI} başarıyla kuruldu."
+basarili "${UYGULAMA_ADI} başarıyla kuruldu."
 
-echo "Kurulum bilgileri:"
-echo
 echo "Uygulama dizini:"
 echo "${HEDEF_DIZIN}"
 echo
+
 echo "Uygulama menüsü kısayolu:"
 echo "${UYGULAMALAR_DIZINI}/${MASAUSTU_DOSYASI}"
 echo
 
-if [ -n "${KULLANICI_MASAUSTU}" ]; then
-    echo "Masaüstü kısayolu:"
-    echo "${KULLANICI_MASAUSTU}/ETAP Ders Modu.desktop"
-    echo
-fi
+echo "Masaüstü kısayolu:"
+echo "${MASAUSTU_HEDEF_DOSYASI}"
+echo
 
-echo "Uygulamayı:"
+echo "Kullanıcı ayar dizini:"
+echo "${KULLANICI_AYAR_DIZINI}"
 echo
-echo "• Masaüstündeki ETAP Ders Modu simgesinden"
-echo "• Pardus uygulama menüsünden"
-echo
-echo "çalıştırabilirsiniz."
+
+echo "Uygulamayı masaüstündeki ETAP Ders Modu"
+echo "simgesine çift tıklayarak çalıştırabilirsiniz."
 echo
 
 exit 0
