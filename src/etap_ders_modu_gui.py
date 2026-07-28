@@ -4,48 +4,30 @@
 """
 ÇalıPardusLab2 - ETAP Ders Modu Grafik Arayüzü
 
-Pardus ve ETAP sınıflarında öğretmenlerin ders sırasında
-gerekli ekran ayarlarını tek dokunuşla yönetmesini sağlar.
-
-Özellikler:
-- Ders modunu başlatma
-- Ders modunu bitirme
-- Ders modu durumunu gösterme
-- Ders süresini gösterme
-- Tam ekran ve pencere modu
-- Büyük, dokunmatik uyumlu düğmeler
-- Terminal gerektirmeyen kullanım
+Öğretmenlerin terminal kullanmadan ders modunu başlatmasını
+ve bitirmesini sağlayan dokunmatik uyumlu Tkinter arayüzüdür.
 """
+
+from __future__ import annotations
 
 import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Callable, Optional, Tuple
 
-from project import (
+from etap_ders_modu import (
+    UYGULAMA_SURUMU,
+    baslangic_zamanini_al,
     ders_modu_aktif_mi,
-    durum_dosyasini_oku,
-    durum_dosyasini_sil,
-    durum_dosyasini_yaz,
-    ekran_ayarlarini_geri_yukle,
-    ekran_uyku_modunu_kapat,
-    komut_var_mi,
-    xset_ayarlarini_ayristir,
-    xset_bilgisi_al
+    ders_modu_durum_bilgisi,
+    ders_modunu_baslat_islemi,
+    ders_modunu_bitir_islemi
 )
 
 
 # ---------------------------------------------------------
-# UYGULAMA BİLGİLERİ
-# ---------------------------------------------------------
-
-UYGULAMA_ADI = "ETAP Ders Modu"
-UYGULAMA_SURUMU = "0.2.0"
-
-
-# ---------------------------------------------------------
-# RENKLER
+# ARAYÜZ RENKLERİ
 # ---------------------------------------------------------
 
 ARKA_PLAN = "#eef3f7"
@@ -67,8 +49,6 @@ CIKIS_RENGI = "#374151"
 
 AKTIF_DURUM_RENGI = "#15803d"
 KAPALI_DURUM_RENGI = "#64748b"
-HATA_RENGI = "#b91c1c"
-UYARI_RENGI = "#b45309"
 
 BEYAZ = "#ffffff"
 KOYU_YAZI = "#1f2937"
@@ -77,14 +57,8 @@ ACIK_YAZI = "#64748b"
 YAZI_TIPI = "DejaVu Sans"
 
 
-# ---------------------------------------------------------
-# ANA UYGULAMA SINIFI
-# ---------------------------------------------------------
-
 class EtapDersModuArayuzu:
-    """
-    ETAP Ders Modu dokunmatik grafik arayüzünü yönetir.
-    """
+    """ETAP Ders Modu grafik arayüzünü yönetir."""
 
     def __init__(self, pencere: tk.Tk) -> None:
         self.pencere = pencere
@@ -92,7 +66,7 @@ class EtapDersModuArayuzu:
         self.islem_devam_ediyor = False
         self.kapanis_yapiliyor = False
 
-        self.pencere.title(UYGULAMA_ADI)
+        self.pencere.title("ETAP Ders Modu")
         self.pencere.geometry("1100x700")
         self.pencere.minsize(850, 580)
         self.pencere.configure(bg=ARKA_PLAN)
@@ -121,24 +95,16 @@ class EtapDersModuArayuzu:
         )
 
     # -----------------------------------------------------
-    # ARAYÜZ
+    # ARAYÜZ OLUŞTURMA
     # -----------------------------------------------------
 
     def arayuzu_olustur(self) -> None:
-        """
-        Ana pencerenin bütün arayüz bileşenlerini oluşturur.
-        """
-
         self.ust_paneli_olustur()
         self.durum_kartini_olustur()
         self.islem_butonlarini_olustur()
         self.alt_paneli_olustur()
 
     def ust_paneli_olustur(self) -> None:
-        """
-        Uygulama başlığı ve tam ekran düğmesini oluşturur.
-        """
-
         ust_panel = tk.Frame(
             self.pencere,
             bg=UST_PANEL,
@@ -165,30 +131,26 @@ class EtapDersModuArayuzu:
             pady=18
         )
 
-        baslik = tk.Label(
+        tk.Label(
             baslik_alani,
             text="ETAP DERS MODU",
             font=(YAZI_TIPI, 27, "bold"),
             fg=BEYAZ,
             bg=UST_PANEL,
             anchor="w"
-        )
+        ).pack(anchor="w")
 
-        baslik.pack(anchor="w")
-
-        alt_baslik = tk.Label(
+        tk.Label(
             baslik_alani,
             text=(
-                "Ders sırasında ekranın kapanmasını "
-                "tek dokunuşla engelleyin"
+                "Ekranı açık tutun ve ders sırasında "
+                "masaüstü bildirimlerini susturun"
             ),
             font=(YAZI_TIPI, 12),
             fg="#cbd5e1",
             bg=UST_PANEL,
             anchor="w"
-        )
-
-        alt_baslik.pack(
+        ).pack(
             anchor="w",
             pady=(5, 0)
         )
@@ -216,10 +178,6 @@ class EtapDersModuArayuzu:
         )
 
     def durum_kartini_olustur(self) -> None:
-        """
-        Ders modunun mevcut durumunu gösteren kartı oluşturur.
-        """
-
         dis_cerceve = tk.Frame(
             self.pencere,
             bg=ARKA_PLAN
@@ -238,9 +196,7 @@ class EtapDersModuArayuzu:
             highlightthickness=1
         )
 
-        durum_karti.pack(
-            fill="x"
-        )
+        durum_karti.pack(fill="x")
 
         sol_alan = tk.Frame(
             durum_karti,
@@ -255,16 +211,14 @@ class EtapDersModuArayuzu:
             pady=20
         )
 
-        durum_basligi = tk.Label(
+        tk.Label(
             sol_alan,
             text="DERS MODU DURUMU",
             font=(YAZI_TIPI, 12, "bold"),
             fg=ACIK_YAZI,
             bg=KART_ARKA_PLAN,
             anchor="w"
-        )
-
-        durum_basligi.pack(anchor="w")
+        ).pack(anchor="w")
 
         self.durum_etiketi = tk.Label(
             sol_alan,
@@ -294,6 +248,20 @@ class EtapDersModuArayuzu:
             pady=(5, 0)
         )
 
+        self.bildirim_etiketi = tk.Label(
+            sol_alan,
+            text="",
+            font=(YAZI_TIPI, 11),
+            fg=ACIK_YAZI,
+            bg=KART_ARKA_PLAN,
+            anchor="w"
+        )
+
+        self.bildirim_etiketi.pack(
+            anchor="w",
+            pady=(5, 0)
+        )
+
         sag_alan = tk.Frame(
             durum_karti,
             bg=KART_ARKA_PLAN
@@ -305,15 +273,13 @@ class EtapDersModuArayuzu:
             pady=20
         )
 
-        sure_basligi = tk.Label(
+        tk.Label(
             sag_alan,
             text="DERS SÜRESİ",
             font=(YAZI_TIPI, 11, "bold"),
             fg=ACIK_YAZI,
             bg=KART_ARKA_PLAN
-        )
-
-        sure_basligi.pack()
+        ).pack()
 
         self.sure_etiketi = tk.Label(
             sag_alan,
@@ -328,10 +294,6 @@ class EtapDersModuArayuzu:
         )
 
     def islem_butonlarini_olustur(self) -> None:
-        """
-        Dokunmatik kullanıma uygun büyük işlem düğmelerini oluşturur.
-        """
-
         ana_panel = tk.Frame(
             self.pencere,
             bg=ARKA_PLAN
@@ -350,49 +312,49 @@ class EtapDersModuArayuzu:
         ana_panel.grid_rowconfigure(1, weight=1)
 
         self.baslat_butonu = self.buyuk_buton_olustur(
-            ana_panel=ana_panel,
-            satir=0,
-            sutun=0,
-            baslik="DERS MODUNU BAŞLAT",
-            aciklama=(
-                "Ekran koruyucuyu ve ekran güç "
-                "yönetimini geçici olarak kapat"
+            ana_panel,
+            0,
+            0,
+            "DERS MODUNU BAŞLAT",
+            (
+                "Ekranı açık tut ve masaüstü "
+                "bildirimlerini geçici olarak sustur"
             ),
-            renk=BASLAT_RENGI,
-            aktif_renk=BASLAT_AKTIF_RENGI,
-            komut=self.ders_modunu_baslat
+            BASLAT_RENGI,
+            BASLAT_AKTIF_RENGI,
+            self.ders_modunu_baslat
         )
 
         self.bitir_butonu = self.buyuk_buton_olustur(
-            ana_panel=ana_panel,
-            satir=0,
-            sutun=1,
-            baslik="DERS MODUNU BİTİR",
-            aciklama=(
-                "Ders öncesindeki ekran ayarlarını "
-                "güvenli biçimde geri yükle"
+            ana_panel,
+            0,
+            1,
+            "DERS MODUNU BİTİR",
+            (
+                "Ekran ve bildirim ayarlarını ders "
+                "öncesindeki hâline geri döndür"
             ),
-            renk=BITIR_RENGI,
-            aktif_renk=BITIR_AKTIF_RENGI,
-            komut=self.ders_modunu_bitir
+            BITIR_RENGI,
+            BITIR_AKTIF_RENGI,
+            self.ders_modunu_bitir
         )
 
         self.yenile_butonu = self.kucuk_buton_olustur(
-            ana_panel=ana_panel,
-            satir=1,
-            sutun=0,
-            metin="DURUMU YENİLE",
-            renk=YENILE_RENGI,
-            komut=self.durumu_yenile
+            ana_panel,
+            1,
+            0,
+            "DURUMU YENİLE",
+            YENILE_RENGI,
+            self.durumu_yenile
         )
 
         self.cikis_butonu = self.kucuk_buton_olustur(
-            ana_panel=ana_panel,
-            satir=1,
-            sutun=1,
-            metin="UYGULAMAYI KAPAT",
-            renk=CIKIS_RENGI,
-            komut=self.uygulamadan_cik
+            ana_panel,
+            1,
+            1,
+            "UYGULAMAYI KAPAT",
+            CIKIS_RENGI,
+            self.uygulamadan_cik
         )
 
         self.islem_butonlari = [
@@ -412,15 +374,10 @@ class EtapDersModuArayuzu:
         aktif_renk: str,
         komut: Callable[[], None]
     ) -> tk.Button:
-        """
-        Başlık ve açıklama içeren büyük düğme oluşturur.
-        """
-
-        metin = f"{baslik}\n\n{aciklama}"
 
         buton = tk.Button(
             ana_panel,
-            text=metin,
+            text=f"{baslik}\n\n{aciklama}",
             command=komut,
             font=(YAZI_TIPI, 19, "bold"),
             bg=renk,
@@ -456,9 +413,6 @@ class EtapDersModuArayuzu:
         renk: str,
         komut: Callable[[], None]
     ) -> tk.Button:
-        """
-        Alt işlem alanı için yardımcı düğme oluşturur.
-        """
 
         buton = tk.Button(
             ana_panel,
@@ -487,10 +441,6 @@ class EtapDersModuArayuzu:
         return buton
 
     def alt_paneli_olustur(self) -> None:
-        """
-        İşlem ve klavye bilgilerini gösteren alt paneli oluşturur.
-        """
-
         alt_panel = tk.Frame(
             self.pencere,
             bg=ALT_PANEL,
@@ -520,15 +470,13 @@ class EtapDersModuArayuzu:
             padx=25
         )
 
-        surum_etiketi = tk.Label(
+        tk.Label(
             alt_panel,
             text=f"Sürüm {UYGULAMA_SURUMU}  |  F11: Tam ekran",
             font=(YAZI_TIPI, 10),
             fg="#94a3b8",
             bg=ALT_PANEL
-        )
-
-        surum_etiketi.pack(
+        ).pack(
             side="right",
             padx=25
         )
@@ -542,9 +490,6 @@ class EtapDersModuArayuzu:
         mesaj: str,
         tur: str = "normal"
     ) -> None:
-        """
-        Alt bilgi alanındaki metni ve rengini günceller.
-        """
 
         renkler = {
             "normal": BEYAZ,
@@ -559,12 +504,8 @@ class EtapDersModuArayuzu:
         )
 
     def durumu_yenile(self) -> None:
-        """
-        Durum dosyasına göre arayüzü günceller.
-        """
-
-        aktif = ders_modu_aktif_mi()
-        durum = durum_dosyasini_oku()
+        durum = ders_modu_durum_bilgisi()
+        aktif = durum.get("aktif") is True
 
         if aktif:
             self.durum_etiketi.configure(
@@ -574,8 +515,19 @@ class EtapDersModuArayuzu:
 
             self.aciklama_etiketi.configure(
                 text=(
-                    "Ekran koruyucu ve ekran güç "
-                    "yönetimi geçici olarak kapalı."
+                    "Ekran açık tutuluyor ve masaüstü "
+                    "bildirimleri susturuluyor."
+                )
+            )
+
+            bildirim_sistemi = durum.get(
+                "bildirim_sistemi"
+            )
+
+            self.bildirim_etiketi.configure(
+                text=(
+                    "Bildirim sistemi: "
+                    f"{str(bildirim_sistemi).upper()}"
                 )
             )
 
@@ -587,18 +539,10 @@ class EtapDersModuArayuzu:
                 state=tk.NORMAL
             )
 
-            baslangic = self.baslangic_zamanini_al(durum)
-
-            if baslangic:
-                self.bilgi_goster(
-                    "Ders modu aktif. Ekran ders boyunca açık kalacak.",
-                    "basarili"
-                )
-            else:
-                self.bilgi_goster(
-                    "Ders modu aktif ancak başlangıç zamanı okunamadı.",
-                    "uyari"
-                )
+            self.bilgi_goster(
+                "Ders modu aktif. Ekran ders boyunca açık kalacak.",
+                "basarili"
+            )
 
         else:
             self.durum_etiketi.configure(
@@ -608,9 +552,13 @@ class EtapDersModuArayuzu:
 
             self.aciklama_etiketi.configure(
                 text=(
-                    "Sistem normal ekran ve güç "
+                    "Sistem normal ekran ve bildirim "
                     "ayarlarını kullanıyor."
                 )
+            )
+
+            self.bildirim_etiketi.configure(
+                text="Bildirimler normal şekilde gösteriliyor."
             )
 
             self.baslat_butonu.configure(
@@ -630,50 +578,32 @@ class EtapDersModuArayuzu:
                 "normal"
             )
 
-    def baslangic_zamanini_al(
-        self,
-        durum: Optional[Dict[str, Any]]
-    ) -> Optional[datetime]:
-        """
-        Durum dosyasındaki başlangıç zamanını datetime nesnesine çevirir.
-        """
-
-        if not durum:
-            return None
-
-        baslangic_metni = durum.get("baslangic_zamani")
-
-        if not isinstance(baslangic_metni, str):
-            return None
-
-        try:
-            return datetime.fromisoformat(baslangic_metni)
-
-        except ValueError:
-            return None
-
     def sure_sayacini_guncelle(self) -> None:
-        """
-        Ders modu aktifken geçen süreyi her saniye günceller.
-        """
-
         if self.kapanis_yapiliyor:
             return
 
         if ders_modu_aktif_mi():
-            durum = durum_dosyasini_oku()
-            baslangic = self.baslangic_zamanini_al(durum)
+            baslangic = baslangic_zamanini_al()
 
             if baslangic:
                 fark = datetime.now() - baslangic
-                toplam_saniye = max(0, int(fark.total_seconds()))
+                toplam_saniye = max(
+                    0,
+                    int(fark.total_seconds())
+                )
 
                 saat = toplam_saniye // 3600
-                dakika = (toplam_saniye % 3600) // 60
+                dakika = (
+                    toplam_saniye % 3600
+                ) // 60
                 saniye = toplam_saniye % 60
 
                 self.sure_etiketi.configure(
-                    text=f"{saat:02d}:{dakika:02d}:{saniye:02d}"
+                    text=(
+                        f"{saat:02d}:"
+                        f"{dakika:02d}:"
+                        f"{saniye:02d}"
+                    )
                 )
 
         self.pencere.after(
@@ -682,14 +612,10 @@ class EtapDersModuArayuzu:
         )
 
     # -----------------------------------------------------
-    # DERS MODUNU BAŞLATMA
+    # DERS MODU İŞLEMLERİ
     # -----------------------------------------------------
 
     def ders_modunu_baslat(self) -> None:
-        """
-        Kullanıcı onayından sonra ders modunu başlatır.
-        """
-
         if ders_modu_aktif_mi():
             messagebox.showinfo(
                 "Ders Modu",
@@ -704,8 +630,10 @@ class EtapDersModuArayuzu:
             "Ders Modunu Başlat",
             (
                 "Ders modu başlatılsın mı?\n\n"
-                "Ekran koruyucu ve ekran güç yönetimi "
-                "ders süresince kapatılacaktır."
+                "• Ekran ders süresince açık kalacak.\n"
+                "• Masaüstü bildirimleri susturulacak.\n\n"
+                "Ders bitirildiğinde önceki ayarlar "
+                "otomatik olarak geri yüklenecektir."
             ),
             parent=self.pencere
         )
@@ -714,76 +642,39 @@ class EtapDersModuArayuzu:
             return
 
         self.arka_planda_calistir(
-            islem_adi="Ders modu başlatılıyor",
-            fonksiyon=self.ders_modunu_baslat_islemi,
-            tamamlanma_fonksiyonu=self.baslatma_sonucunu_goster
+            "Ders modu başlatılıyor",
+            ders_modunu_baslat_islemi,
+            self.baslatma_sonucunu_goster
         )
 
-    def ders_modunu_baslat_islemi(
-        self
-    ) -> Tuple[bool, str]:
-        """
-        Ders modu başlangıç işlemlerini gerçekleştirir.
-        """
-
-        if not komut_var_mi("xset"):
-            return (
-                False,
-                (
-                    "xset komutu bulunamadı.\n\n"
-                    "Kurulum için:\n"
-                    "sudo apt install x11-xserver-utils"
-                )
+    def ders_modunu_bitir(self) -> None:
+        if not ders_modu_aktif_mi():
+            messagebox.showinfo(
+                "Ders Modu",
+                "Aktif bir ders modu bulunamadı.",
+                parent=self.pencere
             )
 
-        basarili, xset_ciktisi = xset_bilgisi_al()
+            self.durumu_yenile()
+            return
 
-        if not basarili:
-            return (
-                False,
-                (
-                    "Mevcut ekran ayarları okunamadı.\n\n"
-                    f"{xset_ciktisi}"
-                )
-            )
-
-        onceki_ayarlar = xset_ayarlarini_ayristir(
-            xset_ciktisi
-        )
-
-        durum = {
-            "ders_modu_aktif": True,
-            "baslangic_zamani": datetime.now().isoformat(
-                timespec="seconds"
-            ),
-            "onceki_ekran_ayarlari": onceki_ayarlar
-        }
-
-        if not durum_dosyasini_yaz(durum):
-            return (
-                False,
-                "Ders modu durum dosyası kaydedilemedi."
-            )
-
-        basarili, mesaj = ekran_uyku_modunu_kapat()
-
-        if not basarili:
-            durum_dosyasini_sil()
-
-            return (
-                False,
-                (
-                    "Ekran ayarları değiştirilemedi.\n\n"
-                    f"{mesaj}"
-                )
-            )
-
-        return (
-            True,
+        onay = messagebox.askyesno(
+            "Ders Modunu Bitir",
             (
-                "Ders modu başarıyla başlatıldı.\n\n"
-                "Ekran ders süresince açık kalacak."
-            )
+                "Ders modu bitirilsin mi?\n\n"
+                "Ekran ve bildirim ayarları ders "
+                "öncesindeki durumuna getirilecektir."
+            ),
+            parent=self.pencere
+        )
+
+        if not onay:
+            return
+
+        self.arka_planda_calistir(
+            "Ders modu bitiriliyor",
+            ders_modunu_bitir_islemi,
+            self.bitirme_sonucunu_goster
         )
 
     def baslatma_sonucunu_goster(
@@ -791,9 +682,6 @@ class EtapDersModuArayuzu:
         basarili: bool,
         mesaj: str
     ) -> None:
-        """
-        Ders modu başlatma sonucunu kullanıcıya gösterir.
-        """
 
         self.durumu_yenile()
 
@@ -821,107 +709,11 @@ class EtapDersModuArayuzu:
                 parent=self.pencere
             )
 
-    # -----------------------------------------------------
-    # DERS MODUNU BİTİRME
-    # -----------------------------------------------------
-
-    def ders_modunu_bitir(self) -> None:
-        """
-        Kullanıcı onayından sonra ders modunu bitirir.
-        """
-
-        if not ders_modu_aktif_mi():
-            messagebox.showinfo(
-                "Ders Modu",
-                "Aktif bir ders modu bulunamadı.",
-                parent=self.pencere
-            )
-
-            self.durumu_yenile()
-            return
-
-        onay = messagebox.askyesno(
-            "Ders Modunu Bitir",
-            (
-                "Ders modu bitirilsin mi?\n\n"
-                "Ders öncesindeki ekran ayarları "
-                "geri yüklenecektir."
-            ),
-            parent=self.pencere
-        )
-
-        if not onay:
-            return
-
-        self.arka_planda_calistir(
-            islem_adi="Ders modu bitiriliyor",
-            fonksiyon=self.ders_modunu_bitir_islemi,
-            tamamlanma_fonksiyonu=self.bitirme_sonucunu_goster
-        )
-
-    def ders_modunu_bitir_islemi(
-        self
-    ) -> Tuple[bool, str]:
-        """
-        Önceki ekran ayarlarını geri yükler.
-        """
-
-        durum = durum_dosyasini_oku()
-
-        if not durum:
-            return (
-                False,
-                "Ders modu durum dosyası bulunamadı."
-            )
-
-        onceki_ayarlar = durum.get(
-            "onceki_ekran_ayarlari"
-        )
-
-        if not isinstance(onceki_ayarlar, dict):
-            return (
-                False,
-                "Önceki ekran ayarları bulunamadı."
-            )
-
-        basarili, mesaj = ekran_ayarlarini_geri_yukle(
-            onceki_ayarlar
-        )
-
-        if not basarili:
-            return (
-                False,
-                (
-                    "Önceki ekran ayarları geri yüklenemedi.\n\n"
-                    f"{mesaj}"
-                )
-            )
-
-        if not durum_dosyasini_sil():
-            return (
-                False,
-                (
-                    "Ekran ayarları geri yüklendi ancak "
-                    "durum dosyası silinemedi."
-                )
-            )
-
-        return (
-            True,
-            (
-                "Ders modu başarıyla bitirildi.\n\n"
-                "Ders öncesindeki ekran ayarları geri yüklendi."
-            )
-        )
-
     def bitirme_sonucunu_goster(
         self,
         basarili: bool,
         mesaj: str
     ) -> None:
-        """
-        Ders modu bitirme sonucunu kullanıcıya gösterir.
-        """
 
         self.durumu_yenile()
 
@@ -959,9 +751,6 @@ class EtapDersModuArayuzu:
         fonksiyon: Callable[[], Tuple[bool, str]],
         tamamlanma_fonksiyonu: Callable[[bool, str], None]
     ) -> None:
-        """
-        Sistem işlemlerini arayüzü dondurmadan çalıştırır.
-        """
 
         if self.islem_devam_ediyor:
             self.bilgi_goster(
@@ -971,7 +760,7 @@ class EtapDersModuArayuzu:
             return
 
         self.islem_devam_ediyor = True
-        self.butonlari_etkinlestir(False)
+        self.butonlari_gecici_kapat()
 
         self.bilgi_goster(
             f"{islem_adi}...",
@@ -994,16 +783,16 @@ class EtapDersModuArayuzu:
         fonksiyon: Callable[[], Tuple[bool, str]],
         tamamlanma_fonksiyonu: Callable[[bool, str], None]
     ) -> None:
-        """
-        Arka plan işlemini çalıştırır ve sonucu ana pencereye iletir.
-        """
 
         try:
             basarili, mesaj = fonksiyon()
 
         except Exception as hata:
             basarili = False
-            mesaj = f"Beklenmeyen bir hata oluştu:\n{hata}"
+            mesaj = (
+                "Beklenmeyen bir hata oluştu:\n\n"
+                f"{hata}"
+            )
 
         self.pencere.after(
             0,
@@ -1020,29 +809,18 @@ class EtapDersModuArayuzu:
         mesaj: str,
         tamamlanma_fonksiyonu: Callable[[bool, str], None]
     ) -> None:
-        """
-        İşlem tamamlandığında düğmeleri yeniden etkinleştirir.
-        """
 
         self.islem_devam_ediyor = False
-        self.butonlari_etkinlestir(True)
-        tamamlanma_fonksiyonu(basarili, mesaj)
+        tamamlanma_fonksiyonu(
+            basarili,
+            mesaj
+        )
 
-    def butonlari_etkinlestir(
-        self,
-        etkin: bool
-    ) -> None:
-        """
-        İşlem sırasında tekrarlı dokunmaları engeller.
-        """
-
-        durum = tk.NORMAL if etkin else tk.DISABLED
-
+    def butonlari_gecici_kapat(self) -> None:
         for buton in self.islem_butonlari:
-            buton.configure(state=durum)
-
-        if etkin:
-            self.durumu_yenile()
+            buton.configure(
+                state=tk.DISABLED
+            )
 
     # -----------------------------------------------------
     # TAM EKRAN
@@ -1052,9 +830,6 @@ class EtapDersModuArayuzu:
         self,
         event=None
     ) -> None:
-        """
-        Tam ekran ve pencere modu arasında geçiş yapar.
-        """
 
         self.tam_ekran = not self.tam_ekran
 
@@ -1063,22 +838,18 @@ class EtapDersModuArayuzu:
             self.tam_ekran
         )
 
-        if self.tam_ekran:
-            self.tam_ekran_butonu.configure(
-                text="PENCERE MODU"
+        self.tam_ekran_butonu.configure(
+            text=(
+                "PENCERE MODU"
+                if self.tam_ekran
+                else "TAM EKRAN"
             )
-        else:
-            self.tam_ekran_butonu.configure(
-                text="TAM EKRAN"
-            )
+        )
 
     def tam_ekrandan_cik(
         self,
         event=None
     ) -> None:
-        """
-        Escape tuşuyla tam ekrandan çıkar.
-        """
 
         if not self.tam_ekran:
             return
@@ -1099,15 +870,11 @@ class EtapDersModuArayuzu:
     # -----------------------------------------------------
 
     def uygulamadan_cik(self) -> None:
-        """
-        Aktif ders modunu kontrol ederek uygulamayı kapatır.
-        """
-
         if self.islem_devam_ediyor:
             messagebox.showwarning(
                 "İşlem Devam Ediyor",
                 (
-                    "Sistem işlemi devam ediyor.\n"
+                    "Bir sistem işlemi devam ediyor.\n"
                     "Lütfen işlem tamamlandıktan sonra tekrar deneyin."
                 ),
                 parent=self.pencere
@@ -1117,10 +884,11 @@ class EtapDersModuArayuzu:
         if ders_modu_aktif_mi():
             mesaj = (
                 "Ders modu hâlen aktif.\n\n"
-                "Uygulamayı kapatsanız bile ekran ayarları "
-                "ders modunda kalacaktır.\n\n"
+                "Uygulamayı kapatsanız bile ekran açık kalacak "
+                "ve bildirimler susturulmaya devam edecektir.\n\n"
                 "Uygulama yine de kapatılsın mı?"
             )
+
         else:
             mesaj = "ETAP Ders Modu kapatılsın mı?"
 
@@ -1135,14 +903,8 @@ class EtapDersModuArayuzu:
             self.pencere.destroy()
 
 
-# ---------------------------------------------------------
-# PROGRAM BAŞLANGICI
-# ---------------------------------------------------------
-
 def ana_program() -> None:
-    """
-    Tkinter grafik arayüzünü başlatır.
-    """
+    """Tkinter grafik arayüzünü başlatır."""
 
     pencere = tk.Tk()
     EtapDersModuArayuzu(pencere)
