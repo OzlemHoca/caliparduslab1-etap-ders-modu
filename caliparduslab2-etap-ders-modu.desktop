@@ -10,4 +10,3 @@ Terminal=true
 Categories=Education;Utility;
 Keywords=ETAP;Pardus;Ders;Öğretmen;Ekran;
 StartupNotify=true
-StartupWMClass=ETAP Ders Modu  
