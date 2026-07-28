@@ -1,1 +1,13 @@
-
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ETAP Ders Modu
+GenericName=Ders Modu Yöneticisi
+Comment=Ders sırasında ekran ve sistem ayarlarını yönetin
+Exec=/opt/etap-ders-modu/baslat.sh
+Icon=/opt/etap-ders-modu/assets/etap-ders-modu.png
+Terminal=true
+Categories=Education;Utility;
+Keywords=ETAP;Pardus;Ders;Öğretmen;Ekran;
+StartupNotify=true
+StartupWMClass=ETAP Ders Modu  
