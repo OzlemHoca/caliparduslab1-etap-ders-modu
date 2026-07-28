@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-ÇalıPardusLab2 - ETAP Ders Modu Grafik Arayüzü
-
-Öğretmenlerin terminal kullanmadan ders modunu başlatmasını
-ve bitirmesini sağlayan dokunmatik uyumlu Tkinter arayüzüdür.
-"""
 
 from __future__ import annotations
 
